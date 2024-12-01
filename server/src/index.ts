@@ -1,44 +1,40 @@
 import express from 'express';
-import { ApolloServer } from '@apollo/server';
 import { expressMiddleware } from '@apollo/server/express4';
+import dotenv from 'dotenv';
+import connectDB from './utils/database';
+import createApolloGraphqlServer from './graphql/server';
+import UserService from './controllers/user.controllers';
+
+
+dotenv.config({ path: './.env' });
 
 async function init() {
     const app = express();
     const PORT = Number(process.env.PORT) || 8000;
 
+    const mongoUri = process.env.MONGO_URI!;
+    await connectDB(mongoUri);
+
     app.use(express.json());
 
-    // Create GraphQL server
-    const gqlServer = new ApolloServer({
-        typeDefs: `
-            type Query {
-                hello: String
-                say(name: String) : String
+    // Create Apollo GraphQL server
+    app.use(
+        "/graphql",
+        expressMiddleware(await createApolloGraphqlServer(), {
+          context: async ({ req }) => {
+            // @ts-ignore
+            const token = req.headers["token"];
+    
+            try {
+              const user = UserService.decodeJWTToken(token as string);
+              return { user };
+            } catch (error) {
+              return {};
             }
-        `, // Schema
-        resolvers: {
-            Query: {
-                hello: () => `Hey there! I am a GraphQL server`,
-                say: (_, {name} : {name:string}) => `hey ${name} how are you`
-            },
-        },
-    });
-
-    // Start GraphQL server
-    await gqlServer.start(); // Ensure this is awaited
-
-    // Add GraphQL middleware
-    app.use('/graphql', expressMiddleware(gqlServer));
-
-    // Test endpoint
-    app.get('/', (req, res) => {
-        res.json({ message: 'Server running...' });
-    });
-
-    // Start Express server
-    app.listen(PORT, () => {
-        console.log(`Server listening on http://localhost:${PORT}`);
-    });
+          },
+        })
+      );
+    app.listen(PORT, () => console.log(`Server started at PORT:${PORT}`));
 }
 
 init();
